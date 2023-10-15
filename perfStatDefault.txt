@@ -1,0 +1,10 @@
+Performance counter stats for './MD.exe':
+
+  730,717,282,164      instructions              #    1.84  insn per cycle
+  396,337,529,343      cycles
+      641,280,808      L1-dcache-load-misses
+
+    104.333169509 seconds time elapsed
+
+    104.292554000 seconds user
+      0.020002000 seconds sys
