@@ -1,1 +1,2 @@
-MD.exe
+MD*.exe
+perf.*
