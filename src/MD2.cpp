@@ -326,6 +326,7 @@ int main()
         Pavg += Press;
         
         fprintf(ofp,"  %8.4e  %20.8f  %20.8f %20.8f  %20.8f  %20.8f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
+        //fprintf(ofp,"  %8.4e  %20.8f  %20.4f %20.8f  %20.7f  %20.7f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
         
         
     }
@@ -585,7 +586,6 @@ void initializeVelocities() {
     
     int i, j;
     
-    srand(1);
     for (i=0; i<N; i++) {
         
         for (j=0; j<3; j++) {

@@ -87,6 +87,8 @@ double MeanSquaredVelocity();
 //  Compute total kinetic energy from particle mass and velocities
 double Kinetic();
 
+double myPow(double base, int exp);
+
 int main()
 {
     
@@ -330,8 +332,9 @@ int main()
         
         Tavg += Temp;
         Pavg += Press;
-        
+
         fprintf(ofp,"  %8.4e  %20.8f  %20.8f %20.8f  %20.8f  %20.8f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
+        //fprintf(ofp,"  %8.4e  %20.8f  %20.4f %20.8f  %20.7f  %20.7f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
         
         
     }
@@ -459,51 +462,58 @@ double Kinetic() { //Write Function here!
 
 // Function to calculate the potential energy of the system
 double Potential() {
-    double quot, r2, rnorm, term1, term2, Pot;
+    double quot, r2, rnorm, term1, term2, Pot, xi, yi, zi;
     int i, j, k;
+    Vect3d riVect, rjVect;
+    double Epsilonx4 = 4*epsilon;
+    double x, y, z;
     
     Pot=0.;
     for (i=0; i<N; i++) {
-        for (j=0; j<N; j++) {
+        riVect = r[i];
+        xi = riVect.x; yi = riVect.y; zi = riVect.z;
+        for (j=0; j<i; j++) {
+            rjVect = r[j];
+
+            x = xi - rjVect.x;
+            y = yi - rjVect.y;
+            z = zi - rjVect.z;
+            r2 = x*x + y*y + z*z;
+
+            quot=sigma/r2;
+            term2 = myPow(quot,3);
+            term1 = term2*term2;
             
-            if (j!=i) {
-                Vect3d riVect = r[i], rjVect = r[j];
-
-                double x = riVect.x - rjVect.x,
-                       y = riVect.y - rjVect.y,
-                       z = riVect.z - rjVect.z;
-                r2 = x*x + y*y + z*z;
-
-                rnorm=sqrt(r2);
-                quot=sigma/rnorm;
-                term1 = pow(quot,12.);
-                term2 = pow(quot,6.);
+            Pot += (term1 - term2);
                 
-                Pot += 4*epsilon*(term1 - term2);
+        }
+        for (j=i+1; j<N; j++) {
+            rjVect = r[j];
+
+            x = xi - rjVect.x;
+            y = yi - rjVect.y;
+            z = zi - rjVect.z;
+
+            r2 = x*x + y*y + z*z;
+
+            quot=sigma/r2;
+            term2 = myPow(quot,3);
+            term1 = term2*term2;
+            
+            Pot += (term1 - term2);
                 
-            }
         }
     }
-    
-    return Pot;
+    return Pot * Epsilonx4;
 }
 
 double myPow(double base, int exp)
 {
+    if (exp == 0)
+        return 1;
     if (exp < 0)
-        return 1/myPow(base, -exp);
-    double result = 1;
-    for (;;)
-    {
-        if (exp & 1)
-            result *= base;
-        exp >>= 1;
-        if (!exp)
-            break;
-        base *= base;
-    }
-
-    return result;
+        return 1 / myPow(base, -exp);
+    return base * myPow(base, exp-1);
 }
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
@@ -511,37 +521,49 @@ double myPow(double base, int exp)
 //   accelleration of each atom. 
 void computeAccelerations() {
     int i, j, k;
-    double f, rSqd;
-    Vect3d rij; // position of i relative to j
+    double f, rSqd, x, y, z, x2, y2, z2, ax, ay, az, xr, yr, zr;
+    Vect3d riVect, rjVect, ai; // position of i relative to j
     
     
     for (i = 0; i < N; i++) {  // set all accelerations to zero
-        // a[i].x = 0.0;
-        // a[i].y = 0.0;
-        // a[i].z = 0.0;
         a[i] = {0.0, 0.0, 0.0};
     }
 
     for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
+        riVect = r[i]; 
+        xr = riVect.x;
+        yr = riVect.y;
+        zr = riVect.z;
+        ai = a[i];
+        ax = ai.x;
+        ay = ai.y;
+        az = ai.z;
         for (j = i+1; j < N; j++) {
             // initialize r^2 to zero
-            Vect3d riVect = r[i], rjVect = r[j];
-            rij.x = riVect.x-rjVect.x;
-            rij.y = riVect.y-rjVect.y;
-            rij.z = riVect.z-rjVect.z;
+            rjVect = r[j];
+            x = xr-rjVect.x;
+            y = yr-rjVect.y;
+            z = zr-rjVect.z;
 
-            rSqd = (rij.x*rij.x) + (rij.y*rij.y) + (rij.z*rij.z);
+            rSqd = (x*x) + (y*y) + (z*z);
 
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
-            f = 24 * (2 * myPow(rSqd, -7) - myPow(rSqd, -4));
-            a[i].x += rij.x * f;
-            a[i].y += rij.y * f;
-            a[i].z += rij.z * f;
+            double aux = myPow(rSqd, 4), aux2 = myPow(rSqd, 3);
+            // f = 24 * (2 * aux*aux2 - aux);
+            // f = 24 * aux * (2*aux2 - 1);
+            f = 24 * ((2 - aux2) / (aux*aux2));
 
-            a[j].x -= rij.x * f;
-            a[j].y -= rij.y * f;
-            a[j].z -= rij.z * f;
+            x = x*f; y = y*f; z = z*f;
+
+            ax += x;
+            ay += y;
+            az += z;
+
+            a[j].x -= x;
+            a[j].y -= y;
+            a[j].z -= z;
         }
+        a[i] = {ax, ay, az};
     }
 }
 
@@ -583,27 +605,27 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
     // Elastic walls
     for (i=0; i<N; i++) {
         if (r[i].x<0.) {
-            v[i].x *=-1.; //- elastic walls
+            v[i].x *=-1; //- elastic walls
             psum += 2*m*fabs(v[i].x)/dt;  // contribution to pressure from "left" walls
         }
         else if (r[i].x>=L) {
-            v[i].x*=-1.;  //- elastic walls
+            v[i].x*=-1;  //- elastic walls
             psum += 2*m*fabs(v[i].x)/dt;  // contribution to pressure from "right" walls
         }
         if (r[i].y<0.) {
-            v[i].y *=-1.; //- elastic walls
+            v[i].y *=-1; //- elastic walls
             psum += 2*m*fabs(v[i].y)/dt;  // contribution to pressure from "left" walls
         }
         else if (r[i].y>=L) {
-            v[i].y*=-1.;  //- elastic walls
+            v[i].y*=-1;  //- elastic walls
             psum += 2*m*fabs(v[i].y)/dt;  // contribution to pressure from "right" walls
         }
         if (r[i].z<0.) {
-            v[i].z *=-1.; //- elastic walls
+            v[i].z *=-1; //- elastic walls
             psum += 2*m*fabs(v[i].z)/dt;  // contribution to pressure from "left" walls
         }
         else if (r[i].z>=L) {
-            v[i].z*=-1.;  //- elastic walls
+            v[i].z*=-1;  //- elastic walls
             psum += 2*m*fabs(v[i].z)/dt;  // contribution to pressure from "right" walls
         }
     }
@@ -627,7 +649,6 @@ void initializeVelocities() {
     
     int i, j;
     
-    srand(1);
     for (i=0; i<N; i++) {
         v[i].x = gaussdist();
         v[i].y = gaussdist();
@@ -654,11 +675,11 @@ void initializeVelocities() {
     //  velocity of each particle... effectively set the
     //  center of mass velocity to zero so that the system does
     //  not drift in space!
-    for (i=0; i<N; i++) {
-        v[i].x -= vCM.x;
-        v[i].y -= vCM.y;
-        v[i].z -= vCM.z;
-    }
+    // for (i=0; i<N; i++) {
+    //     v[i].x -= vCM.x;
+    //     v[i].y -= vCM.y;
+    //     v[i].z -= vCM.z;
+    // }
 
     
     //  Now we want to scale the average velocity of the system
@@ -667,6 +688,9 @@ void initializeVelocities() {
     vSqdSum=0.;
     Vect3d vel;
     for (i=0; i<N; i++) {
+        v[i].x -= vCM.x;
+        v[i].y -= vCM.y;
+        v[i].z -= vCM.z;
         vel = v[i];
         vSqdSum += (vel.x*vel.x) + (vel.y*vel.y) + (vel.z*vel.z);
     }
