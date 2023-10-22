@@ -72,16 +72,18 @@ void initialize();
 //  update positions and velocities using Velocity Verlet algorithm 
 //  print particle coordinates to file for rendering via VMD or other animation software
 //  return 'instantaneous pressure'
-double VelocityVerlet(double dt, int iter, FILE *fp);  
+double VelocityVerlet(double dt, int iter, FILE *fp, double *POT);  
 //  Compute Force using F = -dV/dr
 //  solve F = ma for use in Velocity Verlet
 void computeAccelerations();
+//  Compute Force using F = -dV/dr
+//  solve F = ma for use in Velocity Verlet
+//  Compute total potential energy from particle coordinates
+double computeAccelerationsAndPotential();
 //  Numerical Recipes function for generation gaussian distribution
 double gaussdist();
 //  Initialize velocities according to user-supplied initial Temperature (Tinit)
 void initializeVelocities();
-//  Compute total potential energy from particle coordinates
-double Potential();
 //  Compute mean squared velocity from particle velocities
 double MeanSquaredVelocity();
 //  Compute total kinetic energy from particle mass and velocities
@@ -309,7 +311,7 @@ int main()
         // This updates the positions and velocities using Newton's Laws
         // Also computes the Pressure as the sum of momentum changes from wall collisions / timestep
         // which is a Kinetic Theory of gasses concept of Pressure
-        Press = VelocityVerlet(dt, i+1, tfp);
+        Press = VelocityVerlet(dt, i+1, tfp, &PE);
         Press *= PressFac;
         
         //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -319,7 +321,6 @@ int main()
         //  We would also like to use the IGL to try to see if we can extract the gas constant
         mvs = MeanSquaredVelocity();
         KE = Kinetic();
-        PE = Potential();
         
         // Temperature from Kinetic Theory
         Temp = m*mvs/(3*kB) * TempFac;
@@ -418,6 +419,15 @@ void initialize() {
 }   
 
 
+double myPow(double base, int exp)
+{
+    if (exp > 0)
+        return base * myPow(base, exp-1);
+    if (exp == 0)
+        return 1;
+    return 1 / myPow(base, -exp);
+}
+
 //  Function to calculate the averaged velocity squared
 double MeanSquaredVelocity() { 
     
@@ -431,11 +441,9 @@ double MeanSquaredVelocity() {
         vx2 = vx2 + vect.x*vect.x;
         vy2 = vy2 + vect.y*vect.y;
         vz2 = vz2 + vect.z*vect.z;
-        
     }
     v2 = (vx2+vy2+vz2)/N;
-    
-    
+
     // printf("  Average of x-component of velocity squared is %f\n",v2);
     return v2;
 }
@@ -450,7 +458,7 @@ double Kinetic() { //Write Function here!
         
         Vect3d vect = v[i];
         v2 = (vect.x*vect.x) + (vect.y*vect.y) + (vect.z*vect.z);
-        kin += m*v2/2.;
+        kin += m*v2/2;
         
     }
     
@@ -460,68 +468,74 @@ double Kinetic() { //Write Function here!
 }
 
 
+
+double computeAccelerationsAndPotential()
+{
 // Function to calculate the potential energy of the system
-double Potential() {
-    double quot, r2, rnorm, term1, term2, Pot, xi, yi, zi;
-    int i, j, k;
-    Vect3d riVect, rjVect;
-    double Epsilonx4 = 4*epsilon;
-    double x, y, z;
+    double Pot, f, x, y, z, ax, ay, az, rx, ry, rz, r2, r6, r8;
+    int i, j;
+    Vect3d riVect, rjVect, ai;
+    double Epsilonx8 = 8*epsilon;
+
+    for (i = 0; i < N; i++)
+    {  // set all accelerations to zero
+        a[i] = {0.0, 0.0, 0.0};
+    }
     
     Pot=0.;
-    for (i=0; i<N; i++) {
+    for (i=0; i<N; i++)
+    {
+        // retrieve the position in index i (temporal locallity)
         riVect = r[i];
-        xi = riVect.x; yi = riVect.y; zi = riVect.z;
-        for (j=0; j<i; j++) {
+        // retrieve the x,y and z components of the position in index i (temporal locallity)
+        rx = riVect.x; ry = riVect.y; rz = riVect.z;
+        // retrieve the accelleration in index i (temporal locallity)
+        ai = a[i];
+        // retrieve the x,y and z components of the acceleration in index i (temporal locallity)
+        ax = ai.x; ay = ai.y; az = ai.z;
+        for (j=i+1; j<N; j++)
+        {
             rjVect = r[j];
 
-            x = xi - rjVect.x;
-            y = yi - rjVect.y;
-            z = zi - rjVect.z;
-            r2 = x*x + y*y + z*z;
-
-            quot=sigma/r2;
-            term2 = myPow(quot,3);
-            term1 = term2*term2;
-            
-            Pot += (term1 - term2);
-                
-        }
-        for (j=i+1; j<N; j++) {
-            rjVect = r[j];
-
-            x = xi - rjVect.x;
-            y = yi - rjVect.y;
-            z = zi - rjVect.z;
+            x = rx-rjVect.x;
+            y = ry-rjVect.y;
+            z = rz-rjVect.z;
 
             r2 = x*x + y*y + z*z;
+            r8 = myPow(r2, 4);
+            r6 = myPow(r2, 3);
 
-            quot=sigma/r2;
-            term2 = myPow(quot,3);
-            term1 = term2*term2;
-            
-            Pot += (term1 - term2);
-                
+            f = (2 - r6) / (r8*r6);
+
+            Pot += (1-r6) / (r6*r6);
+
+            x = x*f; y = y*f; z = z*f;
+
+            // writing the information to a local variable to prevent writing to the disk everytime
+            ax += x;
+            ay += y;
+            az += z;
+
+            a[j].x -= x;
+            a[j].y -= y;
+            a[j].z -= z;
+
         }
+        // updating the acceleration, only writing once to the disk
+        // multiply every accelleration by 24 (instead of multiplying every iteration while calculating f) 
+        a[i] = {24*ax, 24*ay, 24*az};
     }
-    return Pot * Epsilonx4;
-}
 
-double myPow(double base, int exp)
-{
-    if (exp == 0)
-        return 1;
-    if (exp < 0)
-        return 1 / myPow(base, -exp);
-    return base * myPow(base, exp-1);
+
+    return Pot * Epsilonx8;
 }
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the
 //   accelleration of each atom. 
 void computeAccelerations() {
-    int i, j, k;
-    double f, rSqd, x, y, z, x2, y2, z2, ax, ay, az, xr, yr, zr;
+    int i, j;
+    double f, rSqd, x, y, z, ax, ay, az, xr, yr, zr;
     Vect3d riVect, rjVect, ai; // position of i relative to j
     
     
@@ -567,12 +581,12 @@ void computeAccelerations() {
     }
 }
 
-// returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
-double VelocityVerlet(double dt, int iter, FILE *fp) {
-    int i, j, k;
+double VelocityVerlet(double dt, int iter, FILE *fp, double *POT) {
+    int i;
     Vect3d vel, acl;
     
     double psum = 0., dtSqd = dt*dt, halfDt = 0.5*dt;
+    double ax, ay, az;
     
     //  Compute accelerations from forces at current position
     // this call was removed (commented) for predagogical reasons
@@ -580,20 +594,18 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
     //  Update positions and velocity with current velocity and acceleration
     //printf("  Updated Positions!\n");
     for (i=0; i<N; i++) {
-        // printf("  %i  %6.4e   %6.4e   %6.4e\n",i,r[i].x,r[i].y,r[i].z);
-        // printf("  %i  %6.4e   %6.4e   %6.4e\n",i,v[i].x,v[i].y,v[i].z);
-        // printf("  %i  %6.4e   %6.4e   %6.4e\n",i,a[i].x,a[i].y,a[i].z);
         vel = v[i]; acl = a[i];
-        r[i].x += vel.x*dt + 0.5*acl.x*dtSqd;
-        r[i].y += vel.y*dt + 0.5*acl.y*dtSqd;
-        r[i].z += vel.z*dt + 0.5*acl.z*dtSqd;
+        ax = acl.x; ay = acl.y; az = acl.z;
+        r[i].x += vel.x*dt + 0.5*ax*dtSqd;
+        r[i].y += vel.y*dt + 0.5*ay*dtSqd;
+        r[i].z += vel.z*dt + 0.5*az*dtSqd;
 
-        v[i].x += acl.x*halfDt;
-        v[i].y += acl.y*halfDt;
-        v[i].z += acl.z*halfDt;
+        v[i].x += ax*halfDt;
+        v[i].y += ay*halfDt;
+        v[i].z += az*halfDt;
     }
     //  Update accellerations from updated positions
-    computeAccelerations();
+    (*POT) = computeAccelerationsAndPotential();
     //  Update velocity with updated acceleration
     for (i=0; i<N; i++) {
         acl = a[i];
@@ -644,10 +656,9 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
     return psum/(6*L*L);
 }
 
-
 void initializeVelocities() {
     
-    int i, j;
+    int i;
     
     for (i=0; i<N; i++) {
         v[i].x = gaussdist();

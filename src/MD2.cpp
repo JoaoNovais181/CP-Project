@@ -326,7 +326,6 @@ int main()
         Pavg += Press;
         
         fprintf(ofp,"  %8.4e  %20.8f  %20.8f %20.8f  %20.8f  %20.8f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
-        //fprintf(ofp,"  %8.4e  %20.8f  %20.4f %20.8f  %20.7f  %20.7f \n",i*dt*timefac,Temp,Press,KE, PE, KE+PE);
         
         
     }
@@ -394,7 +393,7 @@ void initialize() {
     initializeVelocities();
     
     /***********************************************
-    *   Uncomment if you want to see what the initial positions and velocities are
+     *   Uncomment if you want to see what the initial positions and velocities are
      printf("  Printing initial positions!\n");
      for (i=0; i<N; i++) {
      printf("  %6.3e  %6.3e  %6.3e\n",r[i][0],r[i][1],r[i][2]);
@@ -429,7 +428,7 @@ double MeanSquaredVelocity() {
     v2 = (vx2+vy2+vz2)/N;
     
     
-    // printf("  Average of x-component of velocity squared is %f\n",v2);
+    //printf("  Average of x-component of velocity squared is %f\n",v2);
     return v2;
 }
 
@@ -451,7 +450,7 @@ double Kinetic() { //Write Function here!
         
     }
     
-    // printf("  Total Kinetic Energy is %f\n",N*kin*m/2.);
+    //printf("  Total Kinetic Energy is %f\n",N*mvs*m/2.);
     return kin;
     
 }
@@ -501,7 +500,6 @@ void computeAccelerations() {
             a[i][k] = 0;
         }
     }
-
     for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
         for (j = i+1; j < N; j++) {
             // initialize r^2 to zero

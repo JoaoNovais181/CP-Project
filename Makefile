@@ -1,6 +1,6 @@
 CC = gcc
 SRC = src/
-CFLAGS = -Ofast -Wall -funroll-loops -g -fno-omit-frame-pointer -mavx -march=native -ftree-vectorizer-verbose=2 -pg -funsafe-math-optimizations -faggressive-loop-optimizations
+CFLAGS = -Ofast -Wall -funroll-loops -g -fno-omit-frame-pointer -mavx -march=native -ftree-vectorizer-verbose=2 -pg -faggressive-loop-optimizations
 
 .DEFAULT_GOAL = MD.exe
 
