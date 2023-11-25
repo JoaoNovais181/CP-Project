@@ -221,7 +221,8 @@ int main()
     
     scanf("%lf",&rho);
     
-    N = 10*216;
+    // N = 10*216;
+    N = 5000;
     Vol = N/(rho*NA);
     
     Vol /= VolFac;
@@ -493,8 +494,10 @@ double computeAccelerationsAndPotential()
         ai = a[i];
         // retrieve the x,y and z components of the acceleration in index i (temporal locallity)
         ax = ai.x; ay = ai.y; az = ai.z;
+        #pragma omp parallel for schedule(dynamic, 50) // reduction(+ : ax, ay, az)
         for (j=i+1; j<N; j++)
         {
+            printf("%doi", j);
             rjVect = r[j];
 
             x = rx-rjVect.x;
@@ -507,7 +510,7 @@ double computeAccelerationsAndPotential()
 
             f = (2 - r6) / (r8*r6);
 
-            Pot += (1-r6) / (r6*r6);
+            Pot += (sigma-r6) / (r6*r6);
 
             x = x*f; y = y*f; z = z*f;
 

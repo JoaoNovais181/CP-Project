@@ -1,21 +1,25 @@
 CC = gcc
 SRC = src/
-CFLAGS = -Ofast -Wall -funroll-loops -g -fno-omit-frame-pointer -mavx -march=native -ftree-vectorizer-verbose=2 -pg -faggressive-loop-optimizations
+CFLAGS = -Ofast -Wall -funroll-loops -g -fno-omit-frame-pointer -mavx -march=native -ftree-vectorizer-verbose=2 -pg -faggressive-loop-optimizations -fno-exceptions
 
-.DEFAULT_GOAL = MD.exe
+.DEFAULT_GOAL = all
 
-MD.exe: $(SRC)MD.cpp
-	$(CC) $(CFLAGS) $(SRC)MD.cpp -lm -o MD.exe
+all: MDseq.exe MDpar.exe
+
+MDseq.exe: $(SRC)/MDseq.cpp
+	module load gcc/11.2.0;\
+	$(CC) $(CFLAGS) $(SRC)MDseq.cpp -lm -o MDseq.exe
+
+MDpar.exe: $(SRC)/MDpar.cpp
+	module load gcc/11.2.0;\
+	$(CC) $(CFLAGS) $(SRC)MDpar.cpp -lm -fopenmp -o MDpar.exe
 
 clean:
-	rm ./MD.exe
+	rm ./MD*.exe
 
-run:
-	./MD.exe < inputdata.txt
+runseq: MDseq.exe
+	./MDseq.exe < inputdata.txt
 
-run2:
-	./MD2.exe < inputdataOriginal.txt
-
-MD2.exe: $(SRC)MD2.cpp
-	$(CC)  $(SRC)MD2.cpp -lm -o MD2.exe
-
+runpar: MDpar.exe
+	export OMP_NUM_THREADS=2;\
+	./MDpar.exe < inputdata.txt
