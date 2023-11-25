@@ -473,9 +473,10 @@ double Kinetic() { //Write Function here!
 double computeAccelerationsAndPotential()
 {
 // Function to calculate the potential energy of the system
-    double Pot, f, x, y, z, ax, ay, az, rx, ry, rz, r2, r6, r8;
+    // double Pot, f, x, y, z, ax, ay, az, rx, ry, rz, r2, r6, r8;
+    double Pot;
     int i, j;
-    Vect3d riVect, rjVect, ai;
+    // Vect3d riVect, rjVect, ai;
     double Epsilonx8 = 8*epsilon;
 
     for (i = 0; i < N; i++)
@@ -484,31 +485,30 @@ double computeAccelerationsAndPotential()
     }
     
     Pot=0.;
+    #pragma omp parallel for schedule(dynamic, 50) reduction(+:Pot)
     for (i=0; i<N; i++)
     {
         // retrieve the position in index i (temporal locallity)
-        riVect = r[i];
+        Vect3d riVect = r[i];
         // retrieve the x,y and z components of the position in index i (temporal locallity)
-        rx = riVect.x; ry = riVect.y; rz = riVect.z;
+        double rx = riVect.x, ry = riVect.y, rz = riVect.z;
         // retrieve the accelleration in index i (temporal locallity)
-        ai = a[i];
+        Vect3d ai = a[i];
         // retrieve the x,y and z components of the acceleration in index i (temporal locallity)
-        ax = ai.x; ay = ai.y; az = ai.z;
-        #pragma omp parallel for schedule(dynamic, 50) // reduction(+ : ax, ay, az)
+        double ax = ai.x, ay = ai.y, az = ai.z;
         for (j=i+1; j<N; j++)
         {
-            printf("%doi", j);
-            rjVect = r[j];
+            Vect3d rjVect = r[j];
 
-            x = rx-rjVect.x;
-            y = ry-rjVect.y;
-            z = rz-rjVect.z;
+            double x = rx-rjVect.x;
+            double y = ry-rjVect.y;
+            double z = rz-rjVect.z;
 
-            r2 = x*x + y*y + z*z;
-            r8 = myPow(r2, 4);
-            r6 = myPow(r2, 3);
+            double r2 = x*x + y*y + z*z;
+            double r8 = myPow(r2, 4);
+            double r6 = myPow(r2, 3);
 
-            f = (2 - r6) / (r8*r6);
+            double f = (2 - r6) / (r8*r6);
 
             Pot += (sigma-r6) / (r6*r6);
 
