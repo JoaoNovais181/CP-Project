@@ -14,7 +14,7 @@ if not out:
 
     out = True
 
-    for (l1, l2) in zip(original[1::], trab[1::]):
+    for i,(l1, l2) in enumerate(zip(original[1::], trab[1::])):
         nums1 = [num for num in l1.split(" ") if len(num)>0 ]
         nums2 = [num for num in l2.split(" ") if len(num)>0 ]
         for (num1, num2) in zip(nums1[1::], nums2[1::]):

@@ -4,7 +4,7 @@ CFLAGS = -Ofast -Wall -funroll-loops -g -fno-omit-frame-pointer -mavx -march=nat
 
 .DEFAULT_GOAL = all
 
-all: MDseq.exe MDpar.exe
+all: MDseq.exe MDpar.exe MD2seq.exe
 
 MDseq.exe: $(SRC)/MDseq.cpp
 	module load gcc/11.2.0;\
@@ -13,6 +13,10 @@ MDseq.exe: $(SRC)/MDseq.cpp
 MDpar.exe: $(SRC)/MDpar.cpp
 	module load gcc/11.2.0;\
 	$(CC) $(CFLAGS) $(SRC)MDpar.cpp -lm -fopenmp -o MDpar.exe
+
+MD2seq.exe : $(SRC)/MD2seq.cpp
+	module load gcc/11.2.0;\
+	$(CC) $(CFLAGS) $(SRC)MDseq.cpp -lm -o MD2seq.exe
 
 clean:
 	rm ./MD*.exe
@@ -23,3 +27,6 @@ runseq: MDseq.exe
 runpar: MDpar.exe
 	export OMP_NUM_THREADS=2;\
 	./MDpar.exe < inputdata.txt
+
+runorig: MD2seq.exe
+	./MD2seq.exe < inputdataOriginal.txt

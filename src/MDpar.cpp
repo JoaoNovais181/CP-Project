@@ -468,7 +468,23 @@ double Kinetic() { //Write Function here!
     
 }
 
+void printVect3d(Vect3d v)
+{
+    printf("%lf %lf %lf\n", v.x, v.y, v.z);
+}
 
+// Vect3d combine(Vect3d out, Vect3d in)
+// {
+//     printf("in %lf %lf %lf\n", in.x, in.y, in.z);
+//     printf("out %lf %lf %lf\n", out.x, out.y, out.z);
+//     return {out.x + in.x , out.y + in.y , out.z + in.z};
+// }
+
+
+#pragma omp declare reduction (addVect3d : Vect3d : \
+        omp_out.x += omp_in.x, \
+        omp_out.y += omp_in.y, \
+        omp_out.z += omp_in.z)
 
 double computeAccelerationsAndPotential()
 {
@@ -489,7 +505,7 @@ double computeAccelerationsAndPotential()
     }
     
     Pot=0.;
-    #pragma omp parallel for schedule(dynamic, 50) reduction(+:Pot) reduction(+:ax) reduction(+:ay) reduction(+:az)/* shared(a) */
+    #pragma omp parallel for schedule(dynamic, 50) reduction(+:Pot) reduction(addVect3d:a[:N]) //reduction(+:a[:N].x)//reduction(+:ax) reduction(+:ay) reduction(+:az)/* shared(a) */
     for (i=0; i<N; i++)
     {
         // retrieve the position in index i (temporal locallity)
@@ -502,6 +518,7 @@ double computeAccelerationsAndPotential()
         // double ax = ai.x, ay = ai.y, az = ai.z; 
 
         int j;
+#pragma omp for schedule(static) nowait
         for (j=i+1; j<N; j++)
         {
             Vect3d rjVect = r[j];
@@ -525,36 +542,30 @@ double computeAccelerationsAndPotential()
             // ay += y;
             // az += z;
             // #pragma omp atomic(+)
-            // {
-            //     a[i].x += x;
-            //     a[i].y += y;
-            //     a[i].z += z;
+            a[i].x += x;
+            a[i].y += y;
+            a[i].z += z;
 
-            //     a[j].x -= x;
-            //     a[j].y -= y;
-            //     a[j].z -= z;
-            // }
-            ax[i] += x;
-            ay[i] += y;
-            az[i] += z;
-
-            ax[j] -= x;
-            ay[j] -= y;
-            az[j] -= z;
+            a[j].x += -x;
+            a[j].y += -y;
+            a[j].z += -z;
         }
         
         // updating the acceleration, only writing once to the disk
         // multiply every accelleration by 24 (instead of multiplying every iteration while calculating f) 
         // a[i] = {24*ax, 24*ay, 24*az};
         // a[i] = {ax, ay, az};
+        // printVect3d(a[i]);
     }
+    // for (i = 0; i < N; i++)
+    //     printVect3d(a[i]);
 
-    for (i=0 ; i<N ; i++)
-    {
-        a[i].x = ax[i];
-        a[i].y = ay[i];
-        a[i].z = az[i];
-    }
+    // for (i=0 ; i<N ; i++)
+    // {
+    //     a[i].x = ax[i];
+    //     a[i].y = ay[i];
+    //     a[i].z = az[i];
+    // }
 
 
     return Pot * Epsilonx8;
