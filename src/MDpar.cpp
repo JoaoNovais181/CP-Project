@@ -475,17 +475,21 @@ double computeAccelerationsAndPotential()
 // Function to calculate the potential energy of the system
     // double Pot, f, x, y, z, ax, ay, az, rx, ry, rz, r2, r6, r8;
     double Pot;
-    int i, j;
+    int i;
     // Vect3d riVect, rjVect, ai;
     double Epsilonx8 = 8*epsilon;
+    double ax[N], ay[N], az[N];
 
     for (i = 0; i < N; i++)
     {  // set all accelerations to zero
         a[i] = {0.0, 0.0, 0.0};
+        ax[i] = 0;
+        ay[i] = 0;
+        az[i] = 0;
     }
     
     Pot=0.;
-    #pragma omp parallel for schedule(dynamic, 50) reduction(+:Pot)
+    #pragma omp parallel for schedule(dynamic, 50) reduction(+:Pot) reduction(+:ax) reduction(+:ay) reduction(+:az)/* shared(a) */
     for (i=0; i<N; i++)
     {
         // retrieve the position in index i (temporal locallity)
@@ -495,7 +499,9 @@ double computeAccelerationsAndPotential()
         // retrieve the accelleration in index i (temporal locallity)
         Vect3d ai = a[i];
         // retrieve the x,y and z components of the acceleration in index i (temporal locallity)
-        double ax = ai.x, ay = ai.y, az = ai.z;
+        // double ax = ai.x, ay = ai.y, az = ai.z; 
+
+        int j;
         for (j=i+1; j<N; j++)
         {
             Vect3d rjVect = r[j];
@@ -508,25 +514,46 @@ double computeAccelerationsAndPotential()
             double r8 = myPow(r2, 4);
             double r6 = myPow(r2, 3);
 
-            double f = (2 - r6) / (r8*r6);
+            double f = 24 * (2 - r6) / (r8*r6);
 
             Pot += (sigma-r6) / (r6*r6);
 
             x = x*f; y = y*f; z = z*f;
 
             // writing the information to a local variable to prevent writing to the disk everytime
-            ax += x;
-            ay += y;
-            az += z;
+            // ax += x;
+            // ay += y;
+            // az += z;
+            // #pragma omp atomic(+)
+            // {
+            //     a[i].x += x;
+            //     a[i].y += y;
+            //     a[i].z += z;
 
-            a[j].x -= x;
-            a[j].y -= y;
-            a[j].z -= z;
+            //     a[j].x -= x;
+            //     a[j].y -= y;
+            //     a[j].z -= z;
+            // }
+            ax[i] += x;
+            ay[i] += y;
+            az[i] += z;
 
+            ax[j] -= x;
+            ay[j] -= y;
+            az[j] -= z;
         }
+        
         // updating the acceleration, only writing once to the disk
         // multiply every accelleration by 24 (instead of multiplying every iteration while calculating f) 
-        a[i] = {24*ax, 24*ay, 24*az};
+        // a[i] = {24*ax, 24*ay, 24*az};
+        // a[i] = {ax, ay, az};
+    }
+
+    for (i=0 ; i<N ; i++)
+    {
+        a[i].x = ax[i];
+        a[i].y = ay[i];
+        a[i].z = az[i];
     }
 
 

@@ -18,7 +18,7 @@ clean:
 	rm ./MD*.exe
 
 runseq: MDseq.exe
-	./MDseq.exe < inputdata.txt
+	./MDseq.exe < inputdataOriginal.txt
 
 runpar: MDpar.exe
 	export OMP_NUM_THREADS=2;\
