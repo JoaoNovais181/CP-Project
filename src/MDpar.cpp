@@ -546,9 +546,9 @@ double computeAccelerationsAndPotential()
             a[i].y += y;
             a[i].z += z;
 
-            a[j].x += -x;
-            a[j].y += -y;
-            a[j].z += -z;
+            a[j].x -= x;
+            a[j].y -= y;
+            a[j].z -= z;
         }
         
         // updating the acceleration, only writing once to the disk
