@@ -518,7 +518,6 @@ double computeAccelerationsAndPotential()
         // double ax = ai.x, ay = ai.y, az = ai.z; 
 
         int j;
-#pragma omp for schedule(static) nowait
         for (j=i+1; j<N; j++)
         {
             Vect3d rjVect = r[j];
