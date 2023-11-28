@@ -508,14 +508,14 @@ double computeAccelerationsAndPotential()
     #pragma omp parallel for schedule(dynamic, 50) reduction(+:Pot) reduction(addVect3d:a[:N]) //reduction(+:a[:N].x)//reduction(+:ax) reduction(+:ay) reduction(+:az)/* shared(a) */
     for (i=0; i<N; i++)
     {
-        // retrieve the position in index i (temporal locallity)
+        // retrieve the position in index i (temporal locality)
         Vect3d riVect = r[i];
-        // retrieve the x,y and z components of the position in index i (temporal locallity)
+        // retrieve the x,y and z components of the position in index i (temporal locality)
         double rx = riVect.x, ry = riVect.y, rz = riVect.z;
-        // retrieve the accelleration in index i (temporal locallity)
+        // retrieve the acceleration in index i (temporal locality)
         Vect3d ai = a[i];
-        // retrieve the x,y and z components of the acceleration in index i (temporal locallity)
-        // double ax = ai.x, ay = ai.y, az = ai.z; 
+        // retrieve the x,y and z components of the acceleration in index i (temporal locality)
+        double ax = ai.x, ay = ai.y, az = ai.z; 
 
         int j;
         for (j=i+1; j<N; j++)
@@ -530,20 +530,20 @@ double computeAccelerationsAndPotential()
             double r8 = myPow(r2, 4);
             double r6 = myPow(r2, 3);
 
-            double f = 24 * (2 - r6) / (r8*r6);
+            double f = (2 - r6) / (r8*r6);
 
             Pot += (sigma-r6) / (r6*r6);
 
             x = x*f; y = y*f; z = z*f;
 
-            // writing the information to a local variable to prevent writing to the disk everytime
-            // ax += x;
-            // ay += y;
-            // az += z;
+            // writing the information to a local variable to prevent writing to the disk every time
+            ax += x;
+            ay += y;
+            az += z;
             // #pragma omp atomic(+)
-            a[i].x += x;
-            a[i].y += y;
-            a[i].z += z;
+            // a[i].x += x;
+            // a[i].y += y;
+            // a[i].z += z;
 
             a[j].x -= x;
             a[j].y -= y;
@@ -551,8 +551,8 @@ double computeAccelerationsAndPotential()
         }
         
         // updating the acceleration, only writing once to the disk
-        // multiply every accelleration by 24 (instead of multiplying every iteration while calculating f) 
-        // a[i] = {24*ax, 24*ay, 24*az};
+        //Multiply every acceleration by 24 (instead of multiplying every iteration while calculating f) 
+        a[i] = {24*ax, 24*ay, 24*az};
         // a[i] = {ax, ay, az};
         // printVect3d(a[i]);
     }
