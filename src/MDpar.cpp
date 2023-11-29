@@ -494,18 +494,14 @@ double computeAccelerationsAndPotential()
     int i;
     // Vect3d riVect, rjVect, ai;
     double Epsilonx8 = 8*epsilon;
-    double ax[N], ay[N], az[N];
 
     for (i = 0; i < N; i++)
     {  // set all accelerations to zero
         a[i] = {0.0, 0.0, 0.0};
-        ax[i] = 0;
-        ay[i] = 0;
-        az[i] = 0;
     }
     
     Pot=0.;
-    #pragma omp parallel for schedule(dynamic, 50) reduction(+:Pot) reduction(addVect3d:a[:N]) //reduction(+:a[:N].x)//reduction(+:ax) reduction(+:ay) reduction(+:az)/* shared(a) */
+    #pragma omp parallel for schedule(dynamic, 50) reduction(+:Pot) reduction(addVect3d:a[:N])
     for (i=0; i<N; i++)
     {
         // retrieve the position in index i (temporal locality)
@@ -530,7 +526,7 @@ double computeAccelerationsAndPotential()
             double r8 = myPow(r2, 4);
             double r6 = myPow(r2, 3);
 
-            double f = (2 - r6) / (r8*r6);
+            double f = 24 * (2 - r6) / (r8*r6);
 
             Pot += (sigma-r6) / (r6*r6);
 
@@ -540,10 +536,6 @@ double computeAccelerationsAndPotential()
             ax += x;
             ay += y;
             az += z;
-            // #pragma omp atomic(+)
-            // a[i].x += x;
-            // a[i].y += y;
-            // a[i].z += z;
 
             a[j].x -= x;
             a[j].y -= y;
@@ -552,20 +544,9 @@ double computeAccelerationsAndPotential()
         
         // updating the acceleration, only writing once to the disk
         //Multiply every acceleration by 24 (instead of multiplying every iteration while calculating f) 
-        a[i] = {24*ax, 24*ay, 24*az};
-        // a[i] = {ax, ay, az};
-        // printVect3d(a[i]);
+        // a[i] = {24*ax, 24*ay, 24*az};
+        a[i] = {ax, ay, az};
     }
-    // for (i = 0; i < N; i++)
-    //     printVect3d(a[i]);
-
-    // for (i=0 ; i<N ; i++)
-    // {
-    //     a[i].x = ax[i];
-    //     a[i].y = ay[i];
-    //     a[i].z = az[i];
-    // }
-
 
     return Pot * Epsilonx8;
 }

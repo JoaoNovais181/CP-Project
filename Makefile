@@ -25,7 +25,6 @@ runseq: MDseq.exe
 	./MDseq.exe < inputdataOriginal.txt
 
 runpar: MDpar.exe
-	export OMP_NUM_THREADS=2;\
 	./MDpar.exe < inputdata.txt
 
 runorig: MD2seq.exe
