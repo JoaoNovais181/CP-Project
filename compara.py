@@ -1,13 +1,13 @@
 import filecmp
 
-ave = filecmp.cmp("cpOriginal_average.txt", "cp_average.txt")
-out = filecmp.cmp("cpOriginal_output.txt", "cp_output.txt")
-traj = filecmp.cmp("cpOriginal_traj.xyz", "cp_traj.xyz")
+ave = filecmp.cmp("cpPar_average.txt", "cp_average.txt")
+out = filecmp.cmp("cpPar_output.txt", "cp_output.txt")
+traj = filecmp.cmp("cpPar_traj.xyz", "cp_traj.xyz")
 
 if not out:
     original = []
     trab = []
-    with open("cpOriginal_output.txt") as orig:
+    with open("cpPar_output.txt") as orig:
         original = [ line.strip() for line in orig.readlines()]
     with open("cp_output.txt") as tr:
         trab = [ line.strip() for line in tr.readlines()]

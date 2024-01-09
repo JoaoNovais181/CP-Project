@@ -23,12 +23,14 @@
  Wayne NJ 07470
  
  */
+#include <cuda_device_runtime_api.h>
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
 #include<string.h>
 #include<cuda.h>
 
+#define THREADS_PER_BLOCK 64
 
 // Number of particles
 int N;
@@ -65,6 +67,26 @@ Vect3d a[MAXPART];
 //  Force
 Vect3d F[MAXPART];
 
+// #if __CUDA_ARCH__ < 600
+__device__ double atomicAdd2(double* address, double val)
+{
+    unsigned long long int* address_as_ull =
+                              (unsigned long long int*)address;
+    unsigned long long int old = *address_as_ull, assumed;
+
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_ull, assumed,
+                        __double_as_longlong(val +
+                               __longlong_as_double(assumed)));
+
+    // Note: uses integer comparison to avoid hang in case of NaN (since NaN != NaN)
+    } while (assumed != old);
+
+    return __longlong_as_double(old);
+}
+// #endif
+
 // atom type
 char atype[10];
 //  Function prototypes
@@ -90,6 +112,7 @@ double MeanSquaredVelocity();
 //  Compute total kinetic energy from particle mass and velocities
 double Kinetic();
 
+__host__ __device__
 double myPow(double base, int exp);
 
 int main()
@@ -473,24 +496,33 @@ double Kinetic() { //Write Function here!
 void checkCUDAError (const char *msg) {
     cudaError_t err = cudaGetLastError();
     if( cudaSuccess != err) {
-        cerr << "Cuda error: " << msg << ", " << cudaGetErrorString( err) << endl;
+        fprintf(stderr, "Cuda error: %s, %s", msg, cudaGetErrorString( err));
         exit(-1);
     }
 }
 
 __global__
-double computeAccelerationsAndPotentialKernel(Vect3d *dr, Vect3d *da, double *dPot)
+void computeAccelerationsAndPotentialKernel(Vect3d *dr, Vect3d *da, double *dPot, int N, int start, int limit)
 {
 // Function to calculate the potential energy of the system
  
-    int id = blockIdx.x * blockDim.x + threadIdx.x;
+    int id = start + blockIdx.x * blockDim.x + threadIdx.x;
+    int threadID = threadIdx.x;
 
     double Pot=0, f, x, y, z, ax, ay, az, rx, ry, rz, r2, r6, r8;
     int j;
-    Vect3d riVect, rjVect, ai;
-    double Epsilonx8 = 8*epsilon;
+    Vect3d riVect, rjVect;
+    // double Epsilonx8 = 8*epsilon;
+    // __shared__ Vect3d a[THREADS_PER_BLOCK];
+    __shared__ double potential[THREADS_PER_BLOCK];
+    // __shared__ Vect3d sharedR[THREADS_PER_BLOCK];
 
-    if (id < N-1)
+    potential[threadID] = 0.0;
+    // sharedR[threadID] = dr[start + id];
+
+    limit+=start;
+
+    if (id < limit)
     {
         // retrieve the position in index i (temporal locallity)
         riVect = dr[id];
@@ -509,9 +541,9 @@ double computeAccelerationsAndPotentialKernel(Vect3d *dr, Vect3d *da, double *dP
             r8 = myPow(r2, 4);
             r6 = myPow(r2, 3);
 
-            f = (2 - r6) / (r8*r6);
+            f = 24 * (2 - r6) / (r8*r6);
 
-            Pot += (sigma-r6) / (r6*r6);
+            Pot += (1-r6) / (r6*r6);
 
             x = x*f; y = y*f; z = z*f;
 
@@ -520,53 +552,111 @@ double computeAccelerationsAndPotentialKernel(Vect3d *dr, Vect3d *da, double *dP
             ay += y;
             az += z;
 
-            atomicAdd(&(da[j].x), -x);
-            atomicAdd(&(da[j].y), -y);
-            atomicAdd(&(da[j].z), -z);
+            atomicAdd2(&(da[j].x), -x);
+            atomicAdd2(&(da[j].y), -y);
+            atomicAdd2(&(da[j].z), -z);
 
         }
         // updating the acceleration, only writing once to the disk
         // multiply every accelleration by 24 (instead of multiplying every iteration while calculating f) 
-        da[id] = {24*ax, 24*ay, 24*az};
-        atomicAdd(&(da[id].x), 24*ax);
-        atomicAdd(&(da[id].y), 24*ay);
-        atomicAdd(&(da[id].z), 24*az);
+        // a[id] = {ax, ay, az};
+        atomicAdd2(&(da[id].x), ax);
+        atomicAdd2(&(da[id].y), ay);
+        atomicAdd2(&(da[id].z), az);
 
-        atomicAdd(dPot, Pot * Epsilonx8);
+        potential[threadID] = 8*Pot;
+        // atomicAdd2(dPot, 8*Pot);
+
+        __syncthreads();
+
+        if(threadID == 0){
+            for (int i=THREADS_PER_BLOCK-2 ; i>=0 ; i--)
+                potential[i] += potential[i+1];
+            atomicAdd2(dPot, potential[0]);
+        }
+
     }
 }
 
-void launchComputeAccelerationsAndPotencialKernel()
+double launchComputeAccelerationsAndPotencialKernel()
 {
-    Vect3d *dr;
-    Vect3d *da;
-    double Pot, *dPot;
+    Vect3d *dr1, *dr2;
+    Vect3d *da1, *da2, a_aux[MAXPART];
+    double Pot1, Pot2, *dPot1, *dPot2;
 
     size_t sizeStruct = N * sizeof(struct vect3d),
+           sizeStruct2 = (N/2 + (N%2!=0)) * sizeof(struct vect3d),
            sizePot = 1 * sizeof(double);
 
-    cudaMalloc((void **) &dr, sizeStruct);
-    cudaMalloc((void **) &da, sizeStruct);
-    cudaMalloc((void **) &dPot, sizePot);
+    // a_aux = (Vect3d *)malloc(sizeStruct);
 
-    cudaMemcpy(dr, r, sizeStruct, cudaMemcpyHostToDevice);
-    cudaMemset(da, 0, sizeStruct);
-    cudaMemset(dPot, 0, sizePot);
+    cudaStream_t stream1, stream2;
+    cudaStreamCreate(&stream1);
+    cudaStreamCreate(&stream2);
+    checkCUDAError("stream creation");
+
+    cudaMallocAsync((void **) &dr1, sizeStruct, stream1);
+    cudaMallocAsync((void **) &da1, sizeStruct, stream1);
+    cudaMallocAsync((void **) &dPot1, sizePot, stream1);
+
+    // cudaMallocAsync((void **) &dr2, sizeStruct, stream2);
+    // cudaMallocAsync((void **) &a_aux, sizeStruct, stream2);
+    cudaMallocAsync((void **) &da2, sizeStruct2, stream2);
+    cudaMallocAsync((void **) &dPot2, sizePot, stream2);
+    checkCUDAError("memory allocation");
+
+    cudaMemcpyAsync(dr1, r, sizeStruct, cudaMemcpyHostToDevice, stream1);
+    cudaMemsetAsync(da1, 0, sizeStruct, stream1);
+    cudaMemsetAsync(dPot1, 0, sizePot, stream1);
+
+    // cudaMemcpyAsync(dr2, r, sizeStruct, cudaMemcpyHostToDevice, stream2);
+    cudaMemsetAsync(da2, 0, sizeStruct2, stream2);
+    cudaMemsetAsync(dPot2, 0, sizePot, stream2);
     checkCUDAError("memcpy host->device");
 
-    computeAccelerationsAndPotentialKernel(dr, da, dPot);
+    int numBlocks = (N/2)/THREADS_PER_BLOCK + ((N/2)%THREADS_PER_BLOCK != 0);
+    // int numBlocks = N/THREADS_PER_BLOCK + (N%THREADS_PER_BLOCK != 0);
+
+    // printf("%d\n", numBlocks);
+    // computeAccelerationsAndPotentialKernel <<< numBlocks, THREADS_PER_BLOCK, 0, stream1 >>> (dr1, da1, dPot1, N, 0);
+    computeAccelerationsAndPotentialKernel <<< numBlocks, THREADS_PER_BLOCK, 0, stream1 >>> (dr1, da1, dPot1, N, 0, N/2);
+    computeAccelerationsAndPotentialKernel <<< numBlocks, THREADS_PER_BLOCK, 0, stream2 >>> (dr1, da2, dPot2, N, N/2, N/2 + (N%2!=0));
+    checkCUDAError("kernel invocation");
+
+    // cudaDeviceSynchronize();
+    cudaStreamSynchronize(stream1);
+
+    // cudaMemcpy(r, dr, sizeStruct, cudaMemcpyDeviceToHost)
+    cudaMemcpyAsync(a, da1, sizeStruct, cudaMemcpyDeviceToHost, stream1);
+    cudaMemcpyAsync(&Pot1, dPot1, sizePot, cudaMemcpyDeviceToHost, stream1);
+
+    cudaStreamSynchronize(stream2);
+
+    cudaMemcpyAsync(a_aux, da2, sizeStruct2, cudaMemcpyDeviceToHost, stream2);
+    cudaMemcpyAsync(&Pot2, dPot2, sizePot, cudaMemcpyDeviceToHost, stream2);
+    checkCUDAError("memcpy device->host");
 
     cudaDeviceSynchronize();
 
-    // cudaMemcpy(r, dr, sizeStruct, cudaMemcpyDeviceToHost)
-    cudaMemcpy(a, da, sizeStruct, cudaMemcpyDeviceToHost);
-    cudaMemcpy(&Pot, dPot, sizePot, cudaMemcpyDeviceToHost);
+    for (int i=0 ; i<N/2+(N%2!=0) ; i++)
+    {
+        // printf("%lf\n", a_aux[i].x);
+        a[N/2 + i].x += a_aux[i].x;
+        a[N/2 + i].y += a_aux[i].y;
+        a[N/2 + i].z += a_aux[i].z;
+    }
 
-    cudaFree(dr);
-    cudaFree(da);
-    cudaFree(dPot);
+    Pot1 += Pot2;
 
-    return Pot;
+    cudaFree(dr1);
+    cudaFree(da1);
+    cudaFree(dPot1);
+    cudaFree(da2);
+    cudaFree(dPot2);
+    // free(a_aux);
+    checkCUDAError("mem free");
+
+    return Pot1;
 }
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
@@ -644,7 +734,8 @@ double VelocityVerlet(double dt, int iter, FILE *fp, double *POT) {
         v[i].z += az*halfDt;
     }
     //  Update accellerations from updated positions
-    (*POT) = computeAccelerationsAndPotential();
+    (*POT) = launchComputeAccelerationsAndPotencialKernel(); 
+	//computeAccelerationsAndPotential();
     //  Update velocity with updated acceleration
     for (i=0; i<N; i++) {
         acl = a[i];
