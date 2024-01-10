@@ -6,6 +6,4 @@
 #SBATCH --exclusive
 
 
-export OMP_NUM_THREADS=32
-echo  Numero de threads ${OMP_NUM_THREADS}
-time ./MDpar.exe < inputdataPar.txt
+time ./MDorig.exe < inputdataOrig.txt

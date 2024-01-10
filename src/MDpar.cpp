@@ -48,7 +48,7 @@ double L;
 double Tinit;  //2;
 //  Vectors!
 //
-const int MAXPART=5001;
+const int MAXPART=10001;
 
 typedef struct vect3d
 {

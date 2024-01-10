@@ -3,4 +3,4 @@
 #SBATCH --partition=cpar
 #SBATCH --constraint=k20
 
-time make runcuda
+time ./MD.exe < inputdata.txt

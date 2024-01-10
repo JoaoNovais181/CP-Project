@@ -6,7 +6,7 @@ CXXFLAGS = -O3 -g -std=c++11 -arch=sm_35 -Wno-deprecated-gpu-targets --extra-dev
 
 .DEFAULT_GOAL = all
 
-all: MDseq.exe MDpar.exe MD2seq.exe MDcuda.exe
+all: MDseq.exe MDpar.exe MDoriginal.exe MD.exe
 
 MDseq.exe: $(SRC)/MDseq.cpp
 	module load gcc/11.2.0;\
@@ -16,26 +16,30 @@ MDpar.exe: $(SRC)/MDpar.cpp
 	module load gcc/11.2.0;\
 	$(CC) $(CFLAGS) $(SRC)MDpar.cpp -lm -fopenmp -o MDpar.exe
 
-MD2seq.exe : $(SRC)/MD2seq.cpp
+MDoriginal.exe : $(SRC)/MDoriginal.cpp
 	module load gcc/11.2.0;\
-	$(CC) $(CFLAGS) $(SRC)MDseq.cpp -lm -o MD2seq.exe
+	$(CC) $(CFLAGS) $(SRC)MDseq.cpp -lm -o MDoriginal.exe
 
-MDcuda.exe: $(SRC)/MDcuda.cu
+MD.exe: $(SRC)/MDcuda.cu
 	module load gcc/7.2.0;\
 	module load cuda/11.3.1;\
-	$(CXX) $(CXXFLAGS) $(SRC)MDcuda.cu -lm -o MDcuda.exe 
+	$(CXX) $(CXXFLAGS) $(SRC)MDcuda.cu -lm -o MD.exe 
 
 clean:
 	rm ./MD*.exe
 
 runseq: MDseq.exe
-	./MDseq.exe < inputdataOriginal.txt
+	# ./MDseq.exe < inputdataOriginal.txt
+	./runseq.sh
 
 runpar: MDpar.exe
-	./MDpar.exe < inputdataPar.txt
+	# ./MDpar.exe < inputdataPar.txt
+	./runpar.sh
 
-runorig: MD2seq.exe
-	./MD2seq.exe < inputdataOriginal.txt
+runorig: MDoriginal.exe
+	# ./MDoriginal.exe < inputdataOriginal.txt
+	./runorig.sh
 
-runcuda: MDcuda.exe
-	./MDcuda.exe < inputdata.txt
+run: MD.exe
+	# ./MD.exe < inputdata.txt
+	./runcuda.sh

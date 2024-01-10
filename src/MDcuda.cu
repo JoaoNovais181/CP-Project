@@ -30,7 +30,7 @@
 #include<string.h>
 #include<cuda.h>
 
-#define THREADS_PER_BLOCK 64
+int THREADS_PER_BLOCK = 64;
 
 // Number of particles
 int N;
@@ -51,7 +51,7 @@ double L;
 double Tinit;  //2;
 //  Vectors!
 //
-const int MAXPART=5001;
+const int MAXPART=10001;
 
 typedef struct vect3d
 {
@@ -68,7 +68,8 @@ Vect3d a[MAXPART];
 Vect3d F[MAXPART];
 
 // #if __CUDA_ARCH__ < 600
-__device__ double atomicAdd2(double* address, double val)
+__device__ 
+double atomicAdd2(double* address, double val)
 {
     unsigned long long int* address_as_ull =
                               (unsigned long long int*)address;
@@ -115,8 +116,9 @@ double Kinetic();
 __host__ __device__
 double myPow(double base, int exp);
 
-int main()
+int main(int argc, char *argv[])
 {
+
     
     //  variable delcarations
     int i;
@@ -247,6 +249,15 @@ int main()
     
     // N = 10*216;
     N = 5000;
+    if (argc >= 3)
+    {
+        N = atoi(argv[2]);
+    }
+    if (argc >= 2)
+    {
+        THREADS_PER_BLOCK = atoi(argv[1]);
+    }
+
     Vol = N/(rho*NA);
     
     Vol /= VolFac;
@@ -502,158 +513,106 @@ void checkCUDAError (const char *msg) {
 }
 
 __global__
-void computeAccelerationsAndPotentialKernel(Vect3d *dr, Vect3d *da, double *dPot, int N, int start, int limit)
+void computeAccelerationsAndPotentialKernel(Vect3d *dr, Vect3d *da, double *dPot, int N)
 {
-// Function to calculate the potential energy of the system
- 
-    int id = start + blockIdx.x * blockDim.x + threadIdx.x;
+    int id = blockIdx.x * blockDim.x + threadIdx.x;
     int threadID = threadIdx.x;
 
     double Pot=0, f, x, y, z, ax, ay, az, rx, ry, rz, r2, r6, r8;
     int j;
     Vect3d riVect, rjVect;
-    // double Epsilonx8 = 8*epsilon;
-    // __shared__ Vect3d a[THREADS_PER_BLOCK];
-    __shared__ double potential[THREADS_PER_BLOCK];
-    // __shared__ Vect3d sharedR[THREADS_PER_BLOCK];
+    extern __shared__ double potential[];
 
     potential[threadID] = 0.0;
-    // sharedR[threadID] = dr[start + id];
 
-    limit+=start;
-
-    if (id < limit)
+    if (id < N)
     {
-        // retrieve the position in index i (temporal locallity)
         riVect = dr[id];
-        // retrieve the x,y and z components of the position in index i (temporal locallity)
         rx = riVect.x; ry = riVect.y; rz = riVect.z;
         ax = 0; ay = 0; az = 0;
-        for (j=id+1; j<N; j++)
+        for (j=0; j<N; j++)
         {
-            rjVect = dr[j];
+            if (id != j)
+            {
+                rjVect = dr[j];
 
-            x = rx-rjVect.x;
-            y = ry-rjVect.y;
-            z = rz-rjVect.z;
+                x = rx-rjVect.x;
+                y = ry-rjVect.y;
+                z = rz-rjVect.z;
 
-            r2 = x*x + y*y + z*z;
-            r8 = myPow(r2, 4);
-            r6 = myPow(r2, 3);
+                r2 = x*x + y*y + z*z;
+                r8 = myPow(r2, 4);
+                r6 = myPow(r2, 3);
 
-            f = 24 * (2 - r6) / (r8*r6);
+                f = 24 * (2 - r6) / (r8*r6);
 
-            Pot += (1-r6) / (r6*r6);
+                Pot += (1-r6) / (r6*r6);
 
-            x = x*f; y = y*f; z = z*f;
+                x = x*f; y = y*f; z = z*f;
 
-            // writing the information to a local variable to prevent writing to the disk everytime
-            ax += x;
-            ay += y;
-            az += z;
-
-            atomicAdd2(&(da[j].x), -x);
-            atomicAdd2(&(da[j].y), -y);
-            atomicAdd2(&(da[j].z), -z);
-
+                ax += x;
+                ay += y;
+                az += z;
+            }
         }
-        // updating the acceleration, only writing once to the disk
-        // multiply every accelleration by 24 (instead of multiplying every iteration while calculating f) 
-        // a[id] = {ax, ay, az};
-        atomicAdd2(&(da[id].x), ax);
-        atomicAdd2(&(da[id].y), ay);
-        atomicAdd2(&(da[id].z), az);
+        da[id] = {ax, ay, az};
 
-        potential[threadID] = 8*Pot;
-        // atomicAdd2(dPot, 8*Pot);
+        potential[threadID] = 4*Pot;
 
         __syncthreads();
 
         if(threadID == 0){
-            for (int i=THREADS_PER_BLOCK-2 ; i>=0 ; i--)
+            for (int i=blockDim.x-2 ; i>=0 ; i--)
                 potential[i] += potential[i+1];
             atomicAdd2(dPot, potential[0]);
         }
-
     }
 }
 
 double launchComputeAccelerationsAndPotencialKernel()
 {
-    Vect3d *dr1, *dr2;
-    Vect3d *da1, *da2, a_aux[MAXPART];
+    Vect3d *dr1;
+    Vect3d *da1;
     double Pot1, Pot2, *dPot1, *dPot2;
 
     size_t sizeStruct = N * sizeof(struct vect3d),
-           sizeStruct2 = (N/2 + (N%2!=0)) * sizeof(struct vect3d),
            sizePot = 1 * sizeof(double);
 
-    // a_aux = (Vect3d *)malloc(sizeStruct);
-
-    cudaStream_t stream1, stream2;
+    cudaStream_t stream1; 
     cudaStreamCreate(&stream1);
-    cudaStreamCreate(&stream2);
     checkCUDAError("stream creation");
 
     cudaMallocAsync((void **) &dr1, sizeStruct, stream1);
     cudaMallocAsync((void **) &da1, sizeStruct, stream1);
     cudaMallocAsync((void **) &dPot1, sizePot, stream1);
 
-    // cudaMallocAsync((void **) &dr2, sizeStruct, stream2);
-    // cudaMallocAsync((void **) &a_aux, sizeStruct, stream2);
-    cudaMallocAsync((void **) &da2, sizeStruct2, stream2);
-    cudaMallocAsync((void **) &dPot2, sizePot, stream2);
     checkCUDAError("memory allocation");
 
     cudaMemcpyAsync(dr1, r, sizeStruct, cudaMemcpyHostToDevice, stream1);
     cudaMemsetAsync(da1, 0, sizeStruct, stream1);
     cudaMemsetAsync(dPot1, 0, sizePot, stream1);
 
-    // cudaMemcpyAsync(dr2, r, sizeStruct, cudaMemcpyHostToDevice, stream2);
-    cudaMemsetAsync(da2, 0, sizeStruct2, stream2);
-    cudaMemsetAsync(dPot2, 0, sizePot, stream2);
     checkCUDAError("memcpy host->device");
 
-    int numBlocks = (N/2)/THREADS_PER_BLOCK + ((N/2)%THREADS_PER_BLOCK != 0);
-    // int numBlocks = N/THREADS_PER_BLOCK + (N%THREADS_PER_BLOCK != 0);
+    int numBlocks = N/THREADS_PER_BLOCK + (N%THREADS_PER_BLOCK != 0);
+    int sharedMemorySize = THREADS_PER_BLOCK * sizeof(double);
 
-    // printf("%d\n", numBlocks);
-    // computeAccelerationsAndPotentialKernel <<< numBlocks, THREADS_PER_BLOCK, 0, stream1 >>> (dr1, da1, dPot1, N, 0);
-    computeAccelerationsAndPotentialKernel <<< numBlocks, THREADS_PER_BLOCK, 0, stream1 >>> (dr1, da1, dPot1, N, 0, N/2);
-    computeAccelerationsAndPotentialKernel <<< numBlocks, THREADS_PER_BLOCK, 0, stream2 >>> (dr1, da2, dPot2, N, N/2, N/2 + (N%2!=0));
+    computeAccelerationsAndPotentialKernel <<< numBlocks, THREADS_PER_BLOCK, sharedMemorySize, stream1 >>> (dr1, da1, dPot1, N);
     checkCUDAError("kernel invocation");
 
-    // cudaDeviceSynchronize();
     cudaStreamSynchronize(stream1);
 
-    // cudaMemcpy(r, dr, sizeStruct, cudaMemcpyDeviceToHost)
     cudaMemcpyAsync(a, da1, sizeStruct, cudaMemcpyDeviceToHost, stream1);
     cudaMemcpyAsync(&Pot1, dPot1, sizePot, cudaMemcpyDeviceToHost, stream1);
 
-    cudaStreamSynchronize(stream2);
 
-    cudaMemcpyAsync(a_aux, da2, sizeStruct2, cudaMemcpyDeviceToHost, stream2);
-    cudaMemcpyAsync(&Pot2, dPot2, sizePot, cudaMemcpyDeviceToHost, stream2);
     checkCUDAError("memcpy device->host");
 
     cudaDeviceSynchronize();
 
-    for (int i=0 ; i<N/2+(N%2!=0) ; i++)
-    {
-        // printf("%lf\n", a_aux[i].x);
-        a[N/2 + i].x += a_aux[i].x;
-        a[N/2 + i].y += a_aux[i].y;
-        a[N/2 + i].z += a_aux[i].z;
-    }
-
-    Pot1 += Pot2;
-
     cudaFree(dr1);
     cudaFree(da1);
     cudaFree(dPot1);
-    cudaFree(da2);
-    cudaFree(dPot2);
-    // free(a_aux);
     checkCUDAError("mem free");
 
     return Pot1;
